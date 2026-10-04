@@ -1,18 +1,21 @@
 
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-
   "name": "syro-finance",
-
   "main": "src/worker.py",
-
   "compatibility_date": "2026-10-02",
-
   "compatibility_flags": [
     "python_workers"
   ],
-
   "workers_dev": true,
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "syro-finance-db",
+      "database_id": "c604389b-b1ca-44f2-b111-ab077d6a1a55"
+    }
+  ],
 
   "assets": {
     "directory": "./public/",
