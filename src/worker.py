@@ -25,7 +25,10 @@ def query_db(sql, *params):
 
     result = run_sync(statement.run())
 
-    return result.to_py()
+    return {
+        "results": result.results,
+        "meta": result.meta
+    }
 
 
 # =========================================================
