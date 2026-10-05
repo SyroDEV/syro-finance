@@ -2,7 +2,7 @@
 from flask import Flask, Response as FlaskResponse, request, jsonify
 from workers import wsgi
 from pyodide.ffi import run_sync
-from workers import fetch
+from workers import fetch, Request
 
 import hashlib
 import secrets
@@ -371,18 +371,20 @@ def google_callback():
             "grant_type": "authorization_code"
         })
 
+        token_request = Request(
+            "https://oauth2.googleapis.com/token",
+            {
+                "method": "POST",
+                "headers": {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
+                "body": token_body
+            }
+        )
+
         token_response = run_sync(
-            fetch(
-                "https://oauth2.googleapis.com/token",
-                {
-                    "method": "POST",
-                    "headers": {
-                        "Content-Type":
-                            "application/x-www-form-urlencoded"
-                    },
-                    "body": token_body
-                }
-            )
+            fetch(token_request)
         )
 
         token_text = run_sync(
@@ -412,17 +414,19 @@ def google_callback():
         # GET GOOGLE USER INFO
         # =================================================
 
-        userinfo_response = run_sync(
-            fetch(
-                "https://openidconnect.googleapis.com/v1/userinfo",
-                {
-                    "method": "GET",
-                    "headers": {
-                        "Authorization":
-                            "Bearer " + access_token
-                    }
+        userinfo_request = Request(
+            "https://openidconnect.googleapis.com/v1/userinfo",
+            {
+                "method": "GET",
+                "headers": {
+                    "Authorization":
+                        "Bearer " + access_token
                 }
-            )
+            }
+        )
+
+        userinfo_response = run_sync(
+            fetch(userinfo_request)
         )
 
         userinfo_text = run_sync(
