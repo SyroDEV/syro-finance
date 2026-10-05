@@ -25,10 +25,73 @@
         src="https://cdn.jsdelivr.net/npm/chart.js"
     ></script>
 
+
+<script>
+(async function() {
+
+    try {
+
+        const response = await fetch(
+            "/api/me",
+            {
+                method: "GET",
+                credentials: "include"
+            }
+        );
+
+        if (!response.ok) {
+            window.location.replace("/login.html");
+        }
+
+    } catch (error) {
+
+        window.location.replace("/login.html");
+
+    }
+
+})();
+</script>
+
 </head>
 
 
 <body>
+
+<div id="syroUserBar"
+     style="
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:10px;
+        margin-bottom:15px;
+        flex-wrap:wrap;
+     ">
+
+    <span
+        id="userName"
+        style="
+            font-weight:600;
+        "
+    >
+        Memuat...
+    </span>
+
+    <button
+        id="logoutButton"
+        type="button"
+        onclick="logout()"
+        style="
+            padding:8px 14px;
+            border:0;
+            border-radius:8px;
+            cursor:pointer;
+        "
+    >
+        Logout
+    </button>
+
+</div>
+
 
 
 <div class="background-glow glow-one"></div>
@@ -674,6 +737,75 @@
 
 
 <script src="/script.js"></script>
+
+
+<script>
+
+async function loadCurrentUser() {
+
+    try {
+
+        const response = await fetch(
+            "/api/me",
+            {
+                method: "GET",
+                credentials: "include"
+            }
+        );
+
+        if (!response.ok) {
+            window.location.replace("/login.html");
+            return;
+        }
+
+        const data = await response.json();
+
+        const userName =
+            document.getElementById("userName");
+
+        if (
+            userName &&
+            data.user
+        ) {
+            userName.textContent =
+                data.user.nama;
+        }
+
+    } catch (error) {
+
+        window.location.replace("/login.html");
+
+    }
+
+}
+
+
+async function logout() {
+
+    try {
+
+        await fetch(
+            "/api/logout",
+            {
+                method: "POST",
+                credentials: "include"
+            }
+        );
+
+    } finally {
+
+        window.location.replace(
+            "/login.html"
+        );
+
+    }
+
+}
+
+
+loadCurrentUser();
+
+</script>
 
 </body>
 

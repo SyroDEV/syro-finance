@@ -3,6 +3,10 @@ from flask import Flask, Response, request, jsonify
 from workers import wsgi
 from pyodide.ffi import run_sync
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+
 app = Flask(__name__)
 
 
@@ -32,11 +36,236 @@ def query_db(sql, *params):
 
 
 # =========================================================
+# AUTHENTICATION
+# =========================================================
+
+def hash_password(password, salt):
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode(),
+        salt.encode(),
+        200000
+    ).hex()
+
+
+def verify_password(password, stored_password):
+    try:
+        salt, password_hash = stored_password.split(":", 1)
+
+        calculated_hash = hash_password(
+            password,
+            salt
+        )
+
+        return secrets.compare_digest(
+            calculated_hash,
+            password_hash
+        )
+
+    except Exception:
+        return False
+
+
+def create_session(user_id):
+    token = secrets.token_urlsafe(32)
+
+    token_hash = hashlib.sha256(
+        token.encode()
+    ).hexdigest()
+
+    expires_at = (
+        datetime.utcnow() + timedelta(days=7)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    query_db("""
+        INSERT INTO sessions
+            (user_id, token_hash, expires_at)
+        VALUES
+            (?, ?, ?)
+    """,
+        user_id,
+        token_hash,
+        expires_at
+    )
+
+    return token
+
+
+def get_current_user():
+    token = request.cookies.get("syro_session")
+
+    if not token:
+        return None
+
+    token_hash = hashlib.sha256(
+        token.encode()
+    ).hexdigest()
+
+    result = query_db("""
+        SELECT
+            users.id,
+            users.nama,
+            users.email
+        FROM sessions
+        JOIN users
+            ON users.id = sessions.user_id
+        WHERE
+            sessions.token_hash = ?
+            AND sessions.expires_at > CURRENT_TIMESTAMP
+        LIMIT 1
+    """, token_hash)
+
+    users = result.get("results", [])
+
+    return users[0] if users else None
+
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+@app.route("/api/login", methods=["POST"])
+def login():
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+
+        if not email or not password:
+            return jsonify({
+                "error": "Email dan password wajib diisi"
+            }), 400
+
+        result = query_db("""
+            SELECT
+                id,
+                nama,
+                email,
+                password_hash
+            FROM users
+            WHERE email = ?
+            LIMIT 1
+        """, email)
+
+        users = result.get("results", [])
+
+        if not users:
+            return jsonify({
+                "error": "Email atau password salah"
+            }), 401
+
+        user = users[0]
+
+        if not verify_password(
+            password,
+            user["password_hash"]
+        ):
+            return jsonify({
+                "error": "Email atau password salah"
+            }), 401
+
+        token = create_session(user["id"])
+
+        response = jsonify({
+            "success": True,
+            "user": {
+                "id": user["id"],
+                "nama": user["nama"],
+                "email": user["email"]
+            }
+        })
+
+        response.set_cookie(
+            "syro_session",
+            token,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=7 * 24 * 60 * 60,
+            path="/"
+        )
+
+        return response
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# =========================================================
+# CURRENT USER
+# =========================================================
+
+@app.route("/api/me", methods=["GET"])
+def me():
+
+    try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Belum login"
+            }), 401
+
+        return jsonify({
+            "success": True,
+            "user": user
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+
+    try:
+        token = request.cookies.get("syro_session")
+
+        if token:
+            token_hash = hashlib.sha256(
+                token.encode()
+            ).hexdigest()
+
+            query_db("""
+                DELETE FROM sessions
+                WHERE token_hash = ?
+            """, token_hash)
+
+        response = jsonify({
+            "success": True,
+            "message": "Logout berhasil"
+        })
+
+        response.delete_cookie(
+            "syro_session",
+            path="/"
+        )
+
+        return response
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# =========================================================
 # HEALTH
 # =========================================================
 
-@app.route("/api/health")
+@app.route("/api/health", methods=["GET"])
 def health():
+
     return jsonify({
         "status": "online",
         "app": "SYRO"
@@ -51,6 +280,13 @@ def health():
 def get_transaksi():
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         result = query_db("""
             SELECT
                 id,
@@ -61,15 +297,20 @@ def get_transaksi():
                 tanggal,
                 tanggal_transaksi
             FROM transaksi
+            WHERE user_id = ?
             ORDER BY
                 COALESCE(tanggal_transaksi, tanggal) DESC,
                 id DESC
-        """)
+        """, user["id"])
 
-        return jsonify(result.get("results", []))
+        return jsonify(
+            result.get("results", [])
+        )
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
@@ -80,13 +321,22 @@ def get_transaksi():
 def tambah_transaksi():
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         data = request.get_json(silent=True) or {}
 
         jenis = data.get("jenis")
         kategori = data.get("kategori")
         nominal = data.get("nominal")
         keterangan = data.get("keterangan", "")
-        tanggal_transaksi = data.get("tanggal_transaksi")
+        tanggal_transaksi = data.get(
+            "tanggal_transaksi"
+        )
 
         if not jenis or not kategori or nominal is None:
             return jsonify({
@@ -95,10 +345,18 @@ def tambah_transaksi():
 
         result = query_db("""
             INSERT INTO transaksi
-                (jenis, kategori, nominal, keterangan, tanggal_transaksi)
+                (
+                    user_id,
+                    jenis,
+                    kategori,
+                    nominal,
+                    keterangan,
+                    tanggal_transaksi
+                )
             VALUES
-                (?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?)
         """,
+            user["id"],
             jenis,
             kategori,
             int(nominal),
@@ -113,7 +371,9 @@ def tambah_transaksi():
         }), 201
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
@@ -124,13 +384,22 @@ def tambah_transaksi():
 def edit_transaksi(id):
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         data = request.get_json(silent=True) or {}
 
         jenis = data.get("jenis")
         kategori = data.get("kategori")
         nominal = data.get("nominal")
         keterangan = data.get("keterangan", "")
-        tanggal_transaksi = data.get("tanggal_transaksi")
+        tanggal_transaksi = data.get(
+            "tanggal_transaksi"
+        )
 
         if not jenis or not kategori or nominal is None:
             return jsonify({
@@ -145,17 +414,23 @@ def edit_transaksi(id):
                 nominal = ?,
                 keterangan = ?,
                 tanggal_transaksi = ?
-            WHERE id = ?
+            WHERE
+                id = ?
+                AND user_id = ?
         """,
             jenis,
             kategori,
             int(nominal),
             keterangan,
             tanggal_transaksi,
-            id
+            id,
+            user["id"]
         )
 
-        if result.get("meta", {}).get("changes", 0) == 0:
+        if result.get("meta", {}).get(
+            "changes", 0
+        ) == 0:
+
             return jsonify({
                 "error": "Transaksi tidak ditemukan"
             }), 404
@@ -166,7 +441,9 @@ def edit_transaksi(id):
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
@@ -177,12 +454,27 @@ def edit_transaksi(id):
 def hapus_transaksi(id):
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         result = query_db("""
             DELETE FROM transaksi
-            WHERE id = ?
-        """, id)
+            WHERE
+                id = ?
+                AND user_id = ?
+        """,
+            id,
+            user["id"]
+        )
 
-        if result.get("meta", {}).get("changes", 0) == 0:
+        if result.get("meta", {}).get(
+            "changes", 0
+        ) == 0:
+
             return jsonify({
                 "error": "Transaksi tidak ditemukan"
             }), 404
@@ -193,29 +485,43 @@ def hapus_transaksi(id):
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
-# HAPUS SEMUA
+# HAPUS SEMUA TRANSAKSI
 # =========================================================
 
 @app.route("/api/transaksi", methods=["DELETE"])
 def hapus_semua_transaksi():
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         result = query_db("""
             DELETE FROM transaksi
-        """)
+            WHERE user_id = ?
+        """, user["id"])
 
         return jsonify({
             "success": True,
             "message": "Semua transaksi berhasil dihapus",
-            "deleted": result.get("meta", {}).get("changes", 0)
+            "deleted": result.get(
+                "meta", {}
+            ).get("changes", 0)
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
@@ -226,6 +532,13 @@ def hapus_semua_transaksi():
 def statistik():
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         bulan = request.args.get("bulan")
 
         if not bulan:
@@ -237,36 +550,71 @@ def statistik():
             SELECT
                 COALESCE(SUM(
                     CASE
-                        WHEN jenis = 'pemasukan' THEN nominal
+                        WHEN jenis = 'pemasukan'
+                        THEN nominal
                         ELSE 0
                     END
                 ), 0) AS pemasukan,
 
                 COALESCE(SUM(
                     CASE
-                        WHEN jenis = 'pengeluaran' THEN nominal
+                        WHEN jenis = 'pengeluaran'
+                        THEN nominal
                         ELSE 0
                     END
-                ), 0) AS pengeluaran
+                ), 0) AS pengeluaran,
+
+                COUNT(*) AS jumlah_transaksi
 
             FROM transaksi
-            WHERE tanggal_transaksi LIKE ?
-        """, f"{bulan}%")
 
-        data = result.get("results", [])
+            WHERE
+                user_id = ?
+                AND tanggal_transaksi LIKE ?
+        """,
+            user["id"],
+            f"{bulan}%"
+        )
 
-        pemasukan = data[0]["pemasukan"] if data else 0
-        pengeluaran = data[0]["pengeluaran"] if data else 0
+        data = result.get(
+            "results",
+            []
+        )
+
+        if data:
+            pemasukan = data[0].get(
+                "pemasukan", 0
+            )
+
+            pengeluaran = data[0].get(
+                "pengeluaran", 0
+            )
+
+            jumlah_transaksi = data[0].get(
+                "jumlah_transaksi", 0
+            )
+
+        else:
+            pemasukan = 0
+            pengeluaran = 0
+            jumlah_transaksi = 0
+
+        saldo = (
+            pemasukan - pengeluaran
+        )
 
         return jsonify({
             "bulan": bulan,
             "pemasukan": pemasukan,
             "pengeluaran": pengeluaran,
-            "saldo": pemasukan - pengeluaran
+            "saldo": saldo,
+            "jumlah_transaksi": jumlah_transaksi
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
@@ -277,6 +625,13 @@ def statistik():
 def analytics():
 
     try:
+        user = get_current_user()
+
+        if not user:
+            return jsonify({
+                "error": "Unauthorized"
+            }), 401
+
         bulan = request.args.get("bulan")
 
         if not bulan:
@@ -284,85 +639,83 @@ def analytics():
                 "error": "Parameter bulan wajib diisi"
             }), 400
 
-        arus_kas = query_db("""
+        arus_result = query_db("""
             SELECT
                 tanggal_transaksi AS tanggal,
 
                 COALESCE(SUM(
                     CASE
-                        WHEN jenis = 'pemasukan' THEN nominal
+                        WHEN jenis = 'pemasukan'
+                        THEN nominal
                         ELSE 0
                     END
                 ), 0) AS pemasukan,
 
                 COALESCE(SUM(
                     CASE
-                        WHEN jenis = 'pengeluaran' THEN nominal
+                        WHEN jenis = 'pengeluaran'
+                        THEN nominal
                         ELSE 0
                     END
                 ), 0) AS pengeluaran
 
             FROM transaksi
-            WHERE tanggal_transaksi LIKE ?
-            GROUP BY tanggal_transaksi
-            ORDER BY tanggal_transaksi ASC
-        """, f"{bulan}%")
 
-        kategori = query_db("""
+            WHERE
+                user_id = ?
+                AND tanggal_transaksi LIKE ?
+
+            GROUP BY tanggal_transaksi
+
+            ORDER BY tanggal_transaksi ASC
+        """,
+            user["id"],
+            f"{bulan}%"
+        )
+
+        kategori_result = query_db("""
             SELECT
                 kategori,
-                SUM(nominal) AS total
+                COALESCE(
+                    SUM(nominal),
+                    0
+                ) AS total
 
             FROM transaksi
+
             WHERE
-                jenis = 'pengeluaran'
+                user_id = ?
+                AND jenis = 'pengeluaran'
                 AND tanggal_transaksi LIKE ?
 
             GROUP BY kategori
+
             ORDER BY total DESC
-        """, f"{bulan}%")
+        """,
+            user["id"],
+            f"{bulan}%"
+        )
 
         return jsonify({
-            "arus_kas": arus_kas.get("results", []),
-            "kategori": kategori.get("results", [])
+            "bulan": bulan,
+            "arus_kas": arus_result.get(
+                "results",
+                []
+            ),
+            "kategori": kategori_result.get(
+                "results",
+                []
+            )
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =========================================================
-# FRONTEND
-# =========================================================
-
-@app.route("/")
-@app.route("/<path:path>")
-def frontend(path=""):
-
-    if not path:
-        path = "index.html"
-
-    assets = request.environ["workers.env"].ASSETS
-
-    asset_response = run_sync(
-        assets.fetch(
-            f"https://assets.local/{path}"
-        )
-    )
-
-    body = run_sync(
-        asset_response.bytes()
-    )
-
-    return Response(
-        body,
-        status=asset_response.status,
-        headers=asset_response.headers
-    )
-
-
-# =========================================================
-# CLOUDFLARE WORKER
+# WORKERS ENTRYPOINT
 # =========================================================
 
 Default = wsgi.entrypoint(app)

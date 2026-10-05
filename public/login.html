@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — SYRO</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background:
+                radial-gradient(circle at top left, #243b53, transparent 45%),
+                linear-gradient(135deg, #0f172a, #111827);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: white;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            padding: 35px;
+            border-radius: 24px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 25px 70px rgba(0,0,0,0.35);
+        }
+
+        .brand {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 42px;
+            letter-spacing: 5px;
+        }
+
+        .brand p {
+            margin-top: 8px;
+            color: #aab4c3;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #dbe4ef;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 15px;
+            margin-bottom: 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.07);
+            color: white;
+            outline: none;
+            font-size: 15px;
+        }
+
+        input:focus {
+            border-color: #60a5fa;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border: 0;
+            border-radius: 12px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        #error {
+            display: none;
+            margin-bottom: 18px;
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(239,68,68,0.15);
+            color: #fca5a5;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="login-card">
+
+    <div class="brand">
+        <h1>SYRO</h1>
+        <p>Personal Finance</p>
+    </div>
+
+    <form id="loginForm">
+
+        <label for="email">Email</label>
+
+        <input
+            id="email"
+            type="email"
+            placeholder="Masukkan email"
+            autocomplete="email"
+            required
+        >
+
+        <label for="password">Password</label>
+
+        <input
+            id="password"
+            type="password"
+            placeholder="Masukkan password"
+            autocomplete="current-password"
+            required
+        >
+
+        <div id="error"></div>
+
+        <button id="loginButton" type="submit">
+            Login
+        </button>
+
+    </form>
+
+</div>
+
+<script>
+
+const form = document.getElementById("loginForm");
+const button = document.getElementById("loginButton");
+const errorBox = document.getElementById("error");
+
+form.addEventListener("submit", async function(event) {
+
+    event.preventDefault();
+
+    errorBox.style.display = "none";
+
+    button.disabled = true;
+    button.textContent = "Memproses...";
+
+    const email =
+        document.getElementById("email").value.trim();
+
+    const password =
+        document.getElementById("password").value;
+
+    try {
+
+        const response = await fetch(
+            "/api/login",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                credentials: "include",
+
+                body: JSON.stringify({
+                    email: email,
+                    password: password
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.error ||
+                "Login gagal"
+            );
+        }
+
+        window.location.replace("/");
+
+    } catch (error) {
+
+        errorBox.textContent =
+            error.message ||
+            "Terjadi kesalahan";
+
+        errorBox.style.display = "block";
+
+        button.disabled = false;
+        button.textContent = "Login";
+    }
+
+});
+
+</script>
+
+</body>
+</html>
