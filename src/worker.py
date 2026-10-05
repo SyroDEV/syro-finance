@@ -1,5 +1,5 @@
 
-from flask import Flask, Response, request, jsonify
+from flask import Flask, Response as FlaskResponse, request, jsonify
 from workers import wsgi
 from pyodide.ffi import run_sync
 
@@ -717,5 +717,42 @@ def analytics():
 # =========================================================
 # WORKERS ENTRYPOINT
 # =========================================================
+
+
+
+# =========================================================
+# STATIC FILES
+# =========================================================
+
+@app.route("/", methods=["GET"])
+def home():
+    assets = request.environ["workers.env"].ASSETS
+    response = run_sync(assets.fetch(request.url))
+
+    body = run_sync(response.text())
+
+    headers = {}
+    for key, value in response.headers.items():
+        headers[key] = value
+
+    return body, response.status, headers
+
+
+@app.route("/<path:path>", methods=["GET"])
+def static_files(path):
+    if path.startswith("api/"):
+        return jsonify({"error": "Not Found"}), 404
+
+    assets = request.environ["workers.env"].ASSETS
+    response = run_sync(assets.fetch(request.url))
+
+    body = run_sync(response.text())
+
+    headers = {}
+    for key, value in response.headers.items():
+        headers[key] = value
+
+    return body, response.status, headers
+
 
 Default = wsgi.entrypoint(app)
