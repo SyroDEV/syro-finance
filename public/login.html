@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Login — SYRO</title>
 
     <style>
+
         * {
             box-sizing: border-box;
         }
@@ -13,98 +15,299 @@
         body {
             margin: 0;
             min-height: 100vh;
-            font-family: Arial, sans-serif;
+
+            font-family:
+                Inter,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+
             background:
-                radial-gradient(circle at top left, #243b53, transparent 45%),
-                linear-gradient(135deg, #0f172a, #111827);
+                radial-gradient(
+                    circle at 20% 10%,
+                    rgba(59,130,246,0.25),
+                    transparent 35%
+                ),
+                radial-gradient(
+                    circle at 80% 90%,
+                    rgba(14,165,233,0.15),
+                    transparent 35%
+                ),
+                linear-gradient(
+                    135deg,
+                    #020617,
+                    #0f172a,
+                    #111827
+                );
+
             display: flex;
             align-items: center;
             justify-content: center;
+
             padding: 20px;
+
             color: white;
         }
 
         .login-card {
+
             width: 100%;
-            max-width: 420px;
-            padding: 35px;
-            border-radius: 24px;
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.12);
-            backdrop-filter: blur(18px);
-            box-shadow: 0 25px 70px rgba(0,0,0,0.35);
-        }
+            max-width: 430px;
 
-        .brand {
+            padding: 42px 36px;
+
+            border-radius: 28px;
+
+            background:
+                rgba(255,255,255,0.07);
+
+            border:
+                1px solid
+                rgba(255,255,255,0.12);
+
+            backdrop-filter:
+                blur(20px);
+
+            -webkit-backdrop-filter:
+                blur(20px);
+
+            box-shadow:
+                0 30px 80px
+                rgba(0,0,0,0.45);
+
             text-align: center;
-            margin-bottom: 30px;
+
         }
 
-        .brand h1 {
+        .logo {
+
+            width: 72px;
+            height: 72px;
+
+            margin:
+                0 auto 22px;
+
+            border-radius: 20px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            font-size: 34px;
+            font-weight: 800;
+
+            letter-spacing: 2px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #3b82f6,
+                    #2563eb
+                );
+
+            box-shadow:
+                0 15px 35px
+                rgba(37,99,235,0.35);
+
+        }
+
+        h1 {
+
             margin: 0;
-            font-size: 42px;
-            letter-spacing: 5px;
+
+            font-size: 34px;
+
+            letter-spacing: 4px;
+
         }
 
-        .brand p {
-            margin-top: 8px;
-            color: #aab4c3;
-        }
+        .subtitle {
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #dbe4ef;
-            font-size: 14px;
-        }
+            margin:
+                10px 0 32px;
 
-        input {
-            width: 100%;
-            padding: 14px 15px;
-            margin-bottom: 18px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.07);
-            color: white;
-            outline: none;
+            color:
+                #94a3b8;
+
             font-size: 15px;
+
         }
 
-        input:focus {
-            border-color: #60a5fa;
+        .welcome {
+
+            margin-bottom: 24px;
+
+            color:
+                #e2e8f0;
+
+            font-size: 17px;
+
+            font-weight: 600;
+
         }
 
-        button {
+        .google-button {
+
             width: 100%;
-            padding: 14px;
-            border: 0;
-            border-radius: 12px;
-            background: #2563eb;
-            color: white;
+
+            min-height: 54px;
+
+            border: 1px solid
+                rgba(255,255,255,0.16);
+
+            border-radius: 14px;
+
+            background:
+                rgba(255,255,255,0.96);
+
+            color: #111827;
+
             font-size: 16px;
-            font-weight: bold;
+
+            font-weight: 600;
+
             cursor: pointer;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 12px;
+
+            transition:
+                transform 0.2s ease,
+                box-shadow 0.2s ease,
+                background 0.2s ease;
+
         }
 
-        button:hover {
-            background: #1d4ed8;
+        .google-button:hover {
+
+            transform:
+                translateY(-2px);
+
+            background: white;
+
+            box-shadow:
+                0 14px 30px
+                rgba(0,0,0,0.25);
+
         }
 
-        button:disabled {
-            opacity: 0.6;
-            cursor: wait;
+        .google-button:active {
+
+            transform:
+                translateY(0);
+
         }
 
-        #error {
-            display: none;
-            margin-bottom: 18px;
-            padding: 12px;
-            border-radius: 10px;
-            background: rgba(239,68,68,0.15);
-            color: #fca5a5;
-            font-size: 14px;
-            text-align: center;
+        .google-icon {
+
+            width: 22px;
+            height: 22px;
+
+            display: block;
+
         }
+
+        .divider {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 12px;
+
+            margin:
+                28px 0 22px;
+
+            color:
+                #64748b;
+
+            font-size: 12px;
+
+        }
+
+        .divider::before,
+        .divider::after {
+
+            content: "";
+
+            flex: 1;
+
+            height: 1px;
+
+            background:
+                rgba(255,255,255,0.1);
+
+        }
+
+        .secure {
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            gap: 7px;
+
+            color:
+                #64748b;
+
+            font-size: 12px;
+
+        }
+
+        .secure-dot {
+
+            width: 7px;
+            height: 7px;
+
+            border-radius: 50%;
+
+            background:
+                #22c55e;
+
+            box-shadow:
+                0 0 10px
+                rgba(34,197,94,0.7);
+
+        }
+
+        .footer {
+
+            margin-top: 28px;
+
+            color:
+                #475569;
+
+            font-size: 12px;
+
+        }
+
+        @media (max-width: 480px) {
+
+            .login-card {
+
+                padding:
+                    34px 24px;
+
+                border-radius:
+                    22px;
+
+            }
+
+            h1 {
+
+                font-size: 30px;
+
+            }
+
+        }
+
     </style>
 </head>
 
@@ -112,108 +315,105 @@
 
 <div class="login-card">
 
-    <div class="brand">
-        <h1>SYRO</h1>
-        <p>Personal Finance</p>
+    <div class="logo">
+        S
     </div>
 
-    <form id="loginForm">
+    <h1>
+        SYRO
+    </h1>
 
-        <label for="email">Email</label>
+    <p class="subtitle">
+        Personal Finance
+    </p>
 
-        <input
-            id="email"
-            type="email"
-            placeholder="Masukkan email"
-            autocomplete="email"
-            required
+    <div class="welcome">
+        Kelola keuanganmu dengan lebih sederhana.
+    </div>
+
+    <button
+        id="googleLogin"
+        class="google-button"
+        type="button"
+    >
+
+        <svg
+            class="google-icon"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
         >
+            <path
+                fill="#4285F4"
+                d="M21.35 12.27c0-.78-.07-1.53-.22-2.27H12v4.3h5.23a4.47 4.47 0 0 1-1.94 2.93v2.45h3.14c1.84-1.7 2.92-4.2 2.92-7.41z"
+            />
 
-        <label for="password">Password</label>
+            <path
+                fill="#34A853"
+                d="M12 21.75c2.63 0 4.84-.87 6.45-2.37l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.29v2.52A9.75 9.75 0 0 0 12 21.75z"
+            />
 
-        <input
-            id="password"
-            type="password"
-            placeholder="Masukkan password"
-            autocomplete="current-password"
-            required
-        >
+            <path
+                fill="#FBBC05"
+                d="M6.54 13.82A5.86 5.86 0 0 1 6.23 12c0-.63.11-1.24.31-1.82V7.66H3.29A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.04 4.34l3.25-2.52z"
+            />
 
-        <div id="error"></div>
+            <path
+                fill="#EA4335"
+                d="M12 6.15c1.43 0 2.72.49 3.73 1.45l2.8-2.8C16.84 3.22 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.71 5.41l3.25 2.52C7.31 7.87 9.46 6.15 12 6.15z"
+            />
+        </svg>
 
-        <button id="loginButton" type="submit">
-            Login
-        </button>
+        <span>
+            Continue with Google
+        </span>
 
-    </form>
+    </button>
+
+    <div class="divider">
+        SECURE LOGIN
+    </div>
+
+    <div class="secure">
+
+        <span class="secure-dot"></span>
+
+        <span>
+            Secure authentication with Google
+        </span>
+
+    </div>
+
+    <div class="footer">
+        © 2026 SYRO — Personal Finance
+    </div>
 
 </div>
 
+
 <script>
 
-const form = document.getElementById("loginForm");
-const button = document.getElementById("loginButton");
-const errorBox = document.getElementById("error");
+const googleButton =
+    document.getElementById("googleLogin");
 
-form.addEventListener("submit", async function(event) {
+googleButton.addEventListener(
+    "click",
+    function () {
 
-    event.preventDefault();
+        googleButton.disabled = true;
 
-    errorBox.style.display = "none";
+        googleButton.style.opacity =
+            "0.7";
 
-    button.disabled = true;
-    button.textContent = "Memproses...";
+        googleButton.querySelector(
+            "span"
+        ).textContent =
+            "Connecting to Google...";
 
-    const email =
-        document.getElementById("email").value.trim();
+        window.location.href =
+            "/auth/google";
 
-    const password =
-        document.getElementById("password").value;
-
-    try {
-
-        const response = await fetch(
-            "/api/login",
-            {
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                credentials: "include",
-
-                body: JSON.stringify({
-                    email: email,
-                    password: password
-                })
-            }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(
-                data.error ||
-                "Login gagal"
-            );
-        }
-
-        window.location.replace("/");
-
-    } catch (error) {
-
-        errorBox.textContent =
-            error.message ||
-            "Terjadi kesalahan";
-
-        errorBox.style.display = "block";
-
-        button.disabled = false;
-        button.textContent = "Login";
     }
-
-});
+);
 
 </script>
 
