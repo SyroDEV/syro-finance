@@ -2,9 +2,12 @@
 from flask import Flask, Response as FlaskResponse, request, jsonify
 from workers import wsgi
 from pyodide.ffi import run_sync
+from workers import fetch
 
 import hashlib
 import secrets
+import json
+from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -254,6 +257,378 @@ def logout():
         return response
 
     except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+
+
+# =========================================================
+# GOOGLE OAUTH
+# =========================================================
+
+GOOGLE_REDIRECT_URI = (
+    "https://syro-finance.2341170086.workers.dev"
+    "/auth/google/callback"
+)
+
+
+@app.route("/auth/google", methods=["GET"])
+def google_login():
+
+    try:
+        env = request.environ["workers.env"]
+
+        client_id = env.GOOGLE_CLIENT_ID
+
+        state = secrets.token_urlsafe(32)
+
+        params = {
+            "client_id": client_id,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "access_type": "online",
+            "prompt": "select_account"
+        }
+
+        google_url = (
+            "https://accounts.google.com/o/oauth2/v2/auth?"
+            + urlencode(params)
+        )
+
+        response = FlaskResponse(
+            "",
+            status=302
+        )
+
+        response.headers["Location"] = google_url
+
+        response.set_cookie(
+            "syro_oauth_state",
+            state,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=600,
+            path="/"
+        )
+
+        return response
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+@app.route("/auth/google/callback", methods=["GET"])
+def google_callback():
+
+    try:
+
+        code = request.args.get("code", "")
+        state = request.args.get("state", "")
+        saved_state = request.cookies.get(
+            "syro_oauth_state"
+        )
+
+        # =================================================
+        # VALIDATE OAUTH STATE
+        # =================================================
+
+        if (
+            not code
+            or not state
+            or not saved_state
+            or not secrets.compare_digest(
+                state,
+                saved_state
+            )
+        ):
+
+            return jsonify({
+                "error": "OAuth state tidak valid"
+            }), 400
+
+        env = request.environ["workers.env"]
+
+        client_id = env.GOOGLE_CLIENT_ID
+        client_secret = env.GOOGLE_CLIENT_SECRET
+
+        # =================================================
+        # EXCHANGE CODE FOR TOKEN
+        # =================================================
+
+        token_body = urlencode({
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code"
+        })
+
+        token_response = run_sync(
+            fetch(
+                "https://oauth2.googleapis.com/token",
+                {
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type":
+                            "application/x-www-form-urlencoded"
+                    },
+                    "body": token_body
+                }
+            )
+        )
+
+        token_text = run_sync(
+            token_response.text()
+        )
+
+        if token_response.status != 200:
+
+            return jsonify({
+                "error": "Gagal mendapatkan token Google",
+                "details": token_text
+            }), 400
+
+        token_data = json.loads(token_text)
+
+        access_token = token_data.get(
+            "access_token"
+        )
+
+        if not access_token:
+
+            return jsonify({
+                "error": "Access token Google tidak ditemukan"
+            }), 400
+
+        # =================================================
+        # GET GOOGLE USER INFO
+        # =================================================
+
+        userinfo_response = run_sync(
+            fetch(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                {
+                    "method": "GET",
+                    "headers": {
+                        "Authorization":
+                            "Bearer " + access_token
+                    }
+                }
+            )
+        )
+
+        userinfo_text = run_sync(
+            userinfo_response.text()
+        )
+
+        if userinfo_response.status != 200:
+
+            return jsonify({
+                "error": "Gagal mendapatkan data akun Google"
+            }), 400
+
+        google_user = json.loads(
+            userinfo_text
+        )
+
+        google_id = google_user.get("sub")
+        email = (
+            google_user.get("email", "")
+            .strip()
+            .lower()
+        )
+        nama = (
+            google_user.get("name")
+            or email.split("@")[0]
+        )
+        email_verified = google_user.get(
+            "email_verified",
+            False
+        )
+
+        if (
+            not google_id
+            or not email
+            or not email_verified
+        ):
+
+            return jsonify({
+                "error":
+                    "Akun Google tidak valid atau email belum terverifikasi"
+            }), 400
+
+        # =================================================
+        # FIND USER BY GOOGLE ID
+        # =================================================
+
+        result = query_db("""
+            SELECT
+                id,
+                nama,
+                email,
+                google_id
+            FROM users
+            WHERE google_id = ?
+            LIMIT 1
+        """, google_id)
+
+        users = result.get(
+            "results",
+            []
+        )
+
+        user = (
+            users[0]
+            if users
+            else None
+        )
+
+        # =================================================
+        # IF GOOGLE ID NOT FOUND,
+        # TRY MATCHING EXISTING EMAIL
+        # =================================================
+
+        if not user:
+
+            result = query_db("""
+                SELECT
+                    id,
+                    nama,
+                    email,
+                    google_id
+                FROM users
+                WHERE email = ?
+                LIMIT 1
+            """, email)
+
+            users = result.get(
+                "results",
+                []
+            )
+
+            if users:
+
+                user = users[0]
+
+                # Existing account:
+                # connect Google account
+                if not user.get("google_id"):
+
+                    query_db("""
+                        UPDATE users
+                        SET google_id = ?
+                        WHERE id = ?
+                    """,
+                        google_id,
+                        user["id"]
+                    )
+
+                elif user["google_id"] != google_id:
+
+                    return jsonify({
+                        "error":
+                            "Email sudah terhubung dengan akun Google lain"
+                    }), 409
+
+            else:
+
+                # =================================================
+                # CREATE NEW USER
+                # =================================================
+
+                unusable_password = (
+                    "google:"
+                    + secrets.token_hex(32)
+                )
+
+                query_db("""
+                    INSERT INTO users
+                        (
+                            nama,
+                            email,
+                            password_hash,
+                            google_id
+                        )
+                    VALUES
+                        (?, ?, ?, ?)
+                """,
+                    nama,
+                    email,
+                    unusable_password,
+                    google_id
+                )
+
+                result = query_db("""
+                    SELECT
+                        id,
+                        nama,
+                        email,
+                        google_id
+                    FROM users
+                    WHERE google_id = ?
+                    LIMIT 1
+                """, google_id)
+
+                users = result.get(
+                    "results",
+                    []
+                )
+
+                if not users:
+
+                    return jsonify({
+                        "error":
+                            "Gagal membuat akun SYRO"
+                    }), 500
+
+                user = users[0]
+
+        # =================================================
+        # CREATE SYRO SESSION
+        # =================================================
+
+        token = create_session(
+            user["id"]
+        )
+
+        # =================================================
+        # REDIRECT TO DASHBOARD
+        # =================================================
+
+        response = FlaskResponse(
+            "",
+            status=302
+        )
+
+        response.headers["Location"] = "/"
+
+        response.set_cookie(
+            "syro_session",
+            token,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=7 * 24 * 60 * 60,
+            path="/"
+        )
+
+        response.delete_cookie(
+            "syro_oauth_state",
+            path="/"
+        )
+
+        return response
+
+    except Exception as e:
+
         return jsonify({
             "error": str(e)
         }), 500
